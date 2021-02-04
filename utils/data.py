@@ -76,3 +76,9 @@ def is_corrupt_pq(path):
     except:
         print(f'{path} is corrupt or else not a parquet!')
         return True
+
+def lvals(df,name):
+    """
+    short hand to get pandas series for one level within a multi-index
+    """
+    return df.index.get_level_values(name)
