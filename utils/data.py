@@ -16,6 +16,9 @@ def write_pq(df, path):
     """
     if path contains folder that do not exist then create them
     """
+    if isinstance(df, pd.Series):
+        name = path.split('/')[-1].split('.')[0]
+        df = df.to_frame(name=name)
     path = path.replace(' ', '_')  # replace space by '_'
     if not is_full_path(path):
         path = get_full_path(path)  # get data path if not full path
