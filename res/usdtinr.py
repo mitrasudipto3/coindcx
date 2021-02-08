@@ -15,6 +15,9 @@ def coindcx():
     resp = requests.get(url).json()
     df = pd.DataFrame(resp['data'])
     df.time = pd.to_datetime(df.time, unit='ms')
+    # note: coindcx api returns some rows with datetime as 23:59 of that day and same value of OHLC. Zero volume
+    # Those samples make no sense as there is data for the 00:00 always. so ignore them.
+    df = df[df.volume!=0]
     return df.rename(columns={'time':'date'})
 
 def usdtinr():
