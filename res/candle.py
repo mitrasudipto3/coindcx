@@ -14,10 +14,11 @@ markets = markets[markets.ecode == 'B'].coindcx_name
 years = list(range(2018,datetime.now().year+1))
 print(years)
 
+df = pd.DataFrame()
+
 for year in years:
     ts = datetime(year, 1, 1)
     ts = int(time.mktime(ts.timetuple()) * 1000)
-    df = pd.DataFrame()
     i = 0
     for market in markets:
 
@@ -32,5 +33,5 @@ for year in years:
         i = i + 1
 
         print(year, market, i)
-    print(df)
-    df.to_csv(f'{sm_data_path()}/data/candle_sticks.csv')
+print(df)
+df.to_csv(f'{sm_data_path()}/data/candles_sticks.csv')
