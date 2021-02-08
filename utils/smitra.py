@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import scipy
 import numpy as np
 from datetime import datetime
+import pandas as pd
 
 reference_date = datetime(2018, 7, 10)  # index value considered 100 as reference on this date
 
@@ -45,8 +46,7 @@ def normalize(df, ub=None, lb=None):
         if df.min().min() < lb: # note: df.min() is a series
             # any number below lb gets converted to 0
             return normalize(df.mask(df<lb,np.nan),ub=ub,lb=lb)
-    # final returned frame must not have nan weights. zero weight is okay
-    return df.replace(np.nan,0)
+    return df
 
 def create_pivot(df, col1='date', col2='target'):
     """
@@ -56,10 +56,10 @@ def create_pivot(df, col1='date', col2='target'):
     cols.remove(col1)
     cols.remove(col2)
     df = df.pivot(index=col1, columns=col2, values=cols[0])
-    # drop dates with all nan
-    df = df.dropna(axis=0,how='all')
     # drop coins with all nan
     df = df.dropna(axis=1,how='all')
     # keep only after reference date
     df = df[df.index>=reference_date]
+    # add all cal dates
+    df = df.reindex(pd.date_range(df.index.min(), df.index.max(), freq='D'))
     return df.sort_index()
