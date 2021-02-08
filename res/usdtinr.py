@@ -1,5 +1,6 @@
 import requests
 import pandas as pd
+from utils.smitra import reference_date
 
 def wazirx():
     resp = requests.get(
@@ -27,6 +28,7 @@ def usdtinr():
     dfw = dfw[dfw.date<dfc.date.min()]
     df = pd.concat([dfw,dfc],ignore_index=True)
     s = df.set_index('date')['close']
+    s = s[s.index>=reference_date]
     return s
 
 if __name__ == "__main__":
