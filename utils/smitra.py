@@ -4,7 +4,7 @@ import scipy
 import numpy as np
 from datetime import datetime
 
-reference_date = datetime(2017, 10, 1)  # index value considered 100 as reference on this date
+reference_date = datetime(2018, 7, 10)  # index value considered 100 as reference on this date
 
 
 def sm_data_path():
