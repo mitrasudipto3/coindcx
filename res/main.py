@@ -124,6 +124,8 @@ def join_candle_and_mcap(candle, mcap):
 
 def clean_nifty(frame=False):
     """
+    For this first download data from https://uk.investing.com/indices/s-p-cnx-nifty-historical-data
+    and save as nifty.csv in data folder. Must have start date as 10th July 2018.
     make a series/frame with date in index (all cal days, data ffilled) and close in the the data
     returns series if frame=False
     """
