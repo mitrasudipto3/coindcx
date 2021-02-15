@@ -4,6 +4,7 @@ import scipy
 import numpy as np
 from datetime import datetime
 import pandas as pd
+from joblib import Parallel, delayed
 
 reference_date = datetime(2018, 7, 10)  # index value considered 100 as reference on this date
 
@@ -36,17 +37,18 @@ def normalize(df, ub=None, lb=None):
     """
     df = df.div(df.sum(axis=1), axis=0)
     if ub is not None:
-        if df.max().max() > ub: # note: df.max() is a series
+        if df.max().max() > ub:  # note: df.max() is a series
             # any number above ub gets capped at ub
             # capping at ub-0.005 to give some room of optimisation else recursion is called too many times due to
             # stringency
             # passing a_min since we have to. It is set at 0 to do nothing
-            return normalize(df.clip(lower=0,upper=ub-0.05),ub=ub,lb=lb)
+            return normalize(df.clip(lower=0, upper=ub - 0.05), ub=ub, lb=lb)
     if lb is not None:
-        if df.min().min() < lb: # note: df.min() is a series
+        if df.min().min() < lb:  # note: df.min() is a series
             # any number below lb gets converted to 0
-            return normalize(df.mask(df<lb,np.nan),ub=ub,lb=lb)
+            return normalize(df.mask(df < lb, np.nan), ub=ub, lb=lb)
     return df
+
 
 def create_pivot(df, col1='date', col2='target'):
     """
@@ -57,9 +59,17 @@ def create_pivot(df, col1='date', col2='target'):
     cols.remove(col2)
     df = df.pivot(index=col1, columns=col2, values=cols[0])
     # drop coins with all nan
-    df = df.dropna(axis=1,how='all')
+    df = df.dropna(axis=1, how='all')
     # keep only after reference date
-    df = df[df.index>=reference_date]
+    df = df[df.index >= reference_date]
     # add all cal dates
     df = df.reindex(pd.date_range(df.index.min(), df.index.max(), freq='D'))
     return df.sort_index()
+
+
+def pmap(fct, jobs, num_procs=-1, require=None):
+    """
+    parallelize using joblib
+    """
+    return Parallel(n_jobs=num_procs, require=require)(
+        delayed(fct)(job) for job in jobs)

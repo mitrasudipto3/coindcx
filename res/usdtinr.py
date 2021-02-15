@@ -32,6 +32,9 @@ def usdtinr():
     df = pd.concat([dfw,dfc],ignore_index=True)
     s = df.set_index('date')['close']
     s = s[s.index>=reference_date]
+    # surprisingly 21st Dec 2018 (and only this date) still appears twice in data. USe next step to make non duplicate
+    # index
+    s = s.groupby(s.index).mean()
     return s
 
 if __name__ == "__main__":
