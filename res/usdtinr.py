@@ -1,6 +1,7 @@
 import requests
 import pandas as pd
 from utils.smitra import reference_date
+import time
 
 def wazirx():
     resp = requests.get(
@@ -11,7 +12,8 @@ def wazirx():
     return df.rename(columns={'open_time':'date'})
 
 def coindcx():
-    url = 'https://api.coindcx.com/api/v1/chart/history_v2?symbol=USDTINR&resolution=1D&from=1486561175&to=1612791575'
+    now_milliseconds = int(round(time.time() * 1000))
+    url = f'https://api.coindcx.com/api/v1/chart/history_v2?symbol=USDTINR&resolution=1D&from=1486561175&to={now_milliseconds}'
     resp = requests.get(url).json()
     df = pd.DataFrame(resp['data'])
     df.time = pd.to_datetime(df.time, unit='ms')
