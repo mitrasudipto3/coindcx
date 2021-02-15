@@ -73,3 +73,9 @@ def pmap(fct, jobs, num_procs=-1, require=None):
     """
     return Parallel(n_jobs=num_procs, require=require)(
         delayed(fct)(job) for job in jobs)
+
+def unstack(s):
+    """
+    s is series/frame
+    """
+    return s.unstack().dropna().reset_index().rename(columns={'level_0': 'target', 'level_1': 'date'})
