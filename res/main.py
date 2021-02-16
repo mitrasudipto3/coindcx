@@ -1,10 +1,11 @@
 import pandas as pd
-from utils.smitra import sm_data_path, plot, normalize, create_pivot, reference_date
+from utils.smitra import sm_data_path, plot, normalize, create_pivot, reference_date, unstack
 import numpy as np
 from utils.data import lvals, read_pq, write_pq, exists
 from datetime import datetime
 import matplotlib.pyplot as plt
 from res.usdtinr import usdtinr
+from res.candle import regen_candles
 
 pd.set_option('display.max_rows', 200)
 pd.set_option('display.max_columns', 500)
@@ -122,6 +123,7 @@ def join_candle_and_mcap(candle, mcap):
         write_pq(candle, f'data/cleaned_candle_and_mcap.pq')
         return df
 
+
 def clean_nifty(frame=False):
     """
     For this first download data from https://uk.investing.com/indices/s-p-cnx-nifty-historical-data
@@ -129,16 +131,18 @@ def clean_nifty(frame=False):
     make a series/frame with date in index (all cal days, data ffilled) and close in the the data
     returns series if frame=False
     """
-    df = pd.read_csv(f'{sm_data_path()}/data/nifty.csv')[['Price','Date']].rename(columns={'Date':'date','Price':'nifty'})
+    df = pd.read_csv(f'{sm_data_path()}/data/nifty.csv')[['Price', 'Date']].rename(
+        columns={'Date': 'date', 'Price': 'nifty'})
     df['date'] = pd.to_datetime(df.date)
-    df['nifty'] = pd.to_numeric(df['nifty'].apply(lambda x: x.replace(',','')))
+    df['nifty'] = pd.to_numeric(df['nifty'].apply(lambda x: x.replace(',', '')))
     df = df.set_index('date').sort_index()
     if frame:
-        write_pq(df,f'data/nifty.pq')
+        write_pq(df, f'data/nifty.pq')
         return df
     else:
         write_pq(df['nifty'], f'data/nifty.pq')
         return df['nifty']
+
 
 def index_standardisation(index):
     # index is a series
@@ -155,14 +159,19 @@ if __name__ == "__main__":
     4. rebalanced monthly
     5. trades wrt USD 
     """
-    clean_nifty()
+    candle_regen = False
+
+    # if candle_regen:
+    #     regen_candles(parallel=True)
+    # clean_nifty()
+    # clean_mcap_data()
+    # clean_candle_data()
+
+    usdtinr = usdtinr()  # series with date in index
     nifty = read_pq(f'data/nifty.pq')['nifty']
-    clean_mcap_data()
     mcap = read_pq(f'data/mcap.pq')
-    clean_candle_data()
     close_usdt = read_pq(f'data/close_usdt.pq')
     volume_usdt = read_pq(f'data/volume_usdt.pq')
-    usdtinr = usdtinr()  # series with date in index
     close = close_usdt.mul(usdtinr, axis=0)  # in inr now
 
     # keep mcap data only for coins with proper candle data and vice versa (nan all others out)
@@ -183,8 +192,23 @@ if __name__ == "__main__":
     index_mcap_capped = (close * wt_mcap_capped).sum(axis=1)  # summed over cols so 1 val for each date
     index_mcap_capped = index_standardisation(index_mcap_capped)
 
+    # restrict number of coins to 10
+    liquid = mcap.rank(axis=1, ascending=False)  # we wanna have 1 or nan frame; 1 if in top 10
+    liquid = liquid.mask(liquid > 10)  # so starts counting at 1...1 means highest mcap
+    liquid = liquid / liquid  # now inally 1 or nan
+    wt_10 = normalize(mcap * liquid)
+    index_10 = (close * wt_10).sum(axis=1)  # summed over cols so 1 val for each date
+    index_10 = index_standardisation(index_10)
+
+    print(f'All unique coins in history in index of max 10 a day - {sorted(unstack(liquid).target.unique())}')
+    print(len(unstack(liquid).target.unique()))
+    print(
+        f'All unique coins on latest date in index of max 10 a day - {sorted(unstack(liquid.tail(2)).target.unique())}')
+    print(len(unstack(liquid.tail(2)).target.unique()))
+
     # nifty index
     nifty = index_standardisation(nifty)
+
 
     # df = wt_mcap.unstack().replace(0, np.nan).dropna().reset_index(name='wt').rename(
     #     columns={'level_0': 'target', 'level_1': 'date'})
@@ -199,18 +223,21 @@ if __name__ == "__main__":
     # fx.to_csv(f'{sm_data_path()}/data/potential_constituents.csv')
     # exit()
 
-    plot(index_btc_only)
-    plot(index_mcap)
-    plot(index_mcap_capped)
-    plot(nifty)
+    # plot(index_btc_only)
+    # plot(index_mcap)
+    # # plot(index_mcap_capped)
+    # plot(index_10)
+    # plot(nifty)
 
     def f(s):
-        # s = s[s.index >= datetime(2020, 7, 1)]
+        s = s[s.index <= datetime(2021, 2, 14)]
         return s
 
 
     plt.plot(f(index_btc_only), 'r')
-    plt.plot(f(index_mcap), 'b')
-    plt.plot(f(index_mcap_capped), 'y')
-    plt.plot(f(nifty), 'g')
+    plt.plot(f(index_mcap), 'y')
+    plt.plot(f(index_10), 'g')
+    plt.plot(f(nifty), 'b')
+    # plt.plot(f(index_mcap_capped), 'y')
+    legend = plt.legend(labels=('btc only', 'mcap wtd', 'mcap wtd 10 coins only', 'nifty'))
     plt.show()
