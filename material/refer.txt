@@ -1,0 +1,1 @@
+jupyter nb for markowitz and variations: https://nbviewer.jupyter.org/github/cvxgrp/cvx_short_course/blob/master/applications/portfolio_optimization.ipynb
