@@ -130,5 +130,5 @@ dmypy.json
 
 # SM additions
 .idea
-#/data
-#/material
+/data
+/material
