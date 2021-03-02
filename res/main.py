@@ -144,10 +144,30 @@ def clean_nifty(frame=False):
         return df['nifty']
 
 
-def index_standardisation(index):
+def index_standardisation(index, level=100.0):
     # index is a series
     # reference of 100 on a reference date
-    return index * 100 / index[reference_date]
+    return index * level / index[reference_date]
+
+
+def annualized_returns(s, name=None):
+    """
+    given a series of index values. computes annualized returns.
+    The series must have index as datetime and could be weekday only as well as all days. It intelligently handles them
+    """
+    s = s.sort_index().dropna()  # make sure dates are in inc order
+    # number of years
+    # date difference will always be including holidays - no matter if holidays present or not
+    years = (s.index.max() - s.index.min()).days / 365
+    cagr = (s.iloc[-1] / s.iloc[0]) ** (1 / years) - 1
+    cagr = cagr * 100  # in percentage terms
+    if name is not None:
+        print(f'{name}')
+    print(f'Cumulative returns = {(s.iloc[-1] / s.iloc[0] - 1) * 100} %')
+    print(f'Annualized returns = {cagr} %')
+    ret = s.pct_change()  # daily returns
+    print(f'Annualized Risk = {ret.std() * np.sqrt(252) * 100} %')
+    print(f'Annualized Sharpe = {np.sqrt(252) * ret.mean() / ret.std()}')
 
 
 if __name__ == "__main__":
@@ -195,7 +215,7 @@ if __name__ == "__main__":
     # restrict number of coins to 10
     liquid = mcap.rank(axis=1, ascending=False)  # we wanna have 1 or nan frame; 1 if in top 10
     liquid = liquid.mask(liquid > 10)  # so starts counting at 1...1 means highest mcap
-    liquid = liquid / liquid  # now inally 1 or nan
+    liquid = liquid / liquid  # now 1 or nan
     wt_10 = normalize(mcap * liquid)
     index_10 = (close * wt_10).sum(axis=1)  # summed over cols so 1 val for each date
     index_10 = index_standardisation(index_10)
@@ -223,7 +243,7 @@ if __name__ == "__main__":
     # fx.to_csv(f'{sm_data_path()}/data/potential_constituents.csv')
     # exit()
 
-    # plot(index_btc_only)
+    # plot(index_btc_only)git config --global http.postBuffer 157286400
     # plot(index_mcap)
     # # plot(index_mcap_capped)
     # plot(index_10)
@@ -231,13 +251,43 @@ if __name__ == "__main__":
 
     def f(s):
         s = s[s.index <= datetime(2021, 2, 14)]
+        a = s.pct_change()
+        print(np.sqrt(252) * a.mean() / a.std())  # sharpe
         return s
 
 
-    plt.plot(f(index_btc_only), 'r')
-    plt.plot(f(index_mcap), 'y')
-    plt.plot(f(index_10), 'g')
-    plt.plot(f(nifty), 'b')
-    # plt.plot(f(index_mcap_capped), 'y')
-    legend = plt.legend(labels=('btc only', 'mcap wtd', 'mcap wtd 10 coins only', 'nifty'))
+    index_btc_only = f(index_btc_only)
+    index_10 = f(index_10)
+    nifty = f(nifty)
+    # downside of asfreq is it won't add till latest date if latest date is weekend. It only fills BETWEEN first and
+    # last date in data
+    nifty_with_wknd = nifty.asfreq('D').ffill(limit=3)  # add weekends and hold prev value
+
+    # write the index history
+    write_pq(index_btc_only, f'data/index_btc_only.pq')
+    write_pq(index_10, f'data/index_10.pq')
+    write_pq(nifty, f'data/nifty.pq')
+    write_pq(nifty_with_wknd, f'data/nifty_with_wknd.pq')
+
+    # annualized_returns(nifty)
+
+    # exit()
+
+    # plt.plot(index_btc_only, 'r')
+    # plt.plot(index_10, 'g')
+    # plt.plot(nifty, 'b')
+    # legend = plt.legend(labels=('btc only', 'mcap wtd 10 coins only', 'nifty'))
+    # plt.show()
+    # plt.clf()
+    # exit()
+
+    label_lst = []
+    for x in [(0.01, 'g'), (0.05, 'r'), (0.1, 'b')]:  # [(0,'y'),(1,'m')]:
+        frac = x[0]
+        clr = x[1]
+        label_lst.append(frac)
+        s = index_10 * frac + nifty_with_wknd * (1 - frac)
+        annualized_returns(s, f'{frac * 100}% crypto index and {100 - frac * 100}% Indian Equity')
+        plt.plot(s - 100, clr)  # plotting cumulative return
+    legend = plt.legend(labels=[f'{x * 100}% crypto index and {100 - x * 100}% Indian Equity' for x in label_lst])
     plt.show()

@@ -6,7 +6,7 @@ from datetime import datetime
 import pandas as pd
 from joblib import Parallel, delayed
 
-reference_date = datetime(2018, 7, 10)  # index value considered 100 as reference on this date
+reference_date = datetime(2018, 7, 10)  # index value considered 100 as reference on this date # a Tuesday
 
 
 def sm_data_path():
