@@ -165,6 +165,7 @@ def annualized_returns(s, name=None):
         print(f'{name}')
     print(f'Cumulative returns = {(s.iloc[-1] / s.iloc[0] - 1) * 100} %')
     print(f'Annualized returns = {cagr} %')
+    print(f'Cumulative returns = {s.iloc[-1] - s.iloc[0]}')
     ret = s.pct_change()  # daily returns
     print(f'Annualized Risk = {ret.std() * np.sqrt(252) * 100} %')
     print(f'Annualized Sharpe = {np.sqrt(252) * ret.mean() / ret.std()}')
@@ -281,6 +282,9 @@ if __name__ == "__main__":
     # plt.clf()
     # exit()
 
+    annualized_returns(index_10, f'index_10')
+    annualized_returns(nifty_with_wknd, f'nifty_with_wknd')
+    annualized_returns(nifty, f'nifty')
     label_lst = []
     for x in [(0.01, 'g'), (0.05, 'r'), (0.1, 'b')]:  # [(0,'y'),(1,'m')]:
         frac = x[0]
