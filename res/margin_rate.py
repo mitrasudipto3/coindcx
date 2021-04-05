@@ -1,7 +1,10 @@
 import pandas as pd
 from utils.smitra import sm_data_path
 
-if __name__ == "__main__":
+def research():
+    """
+    research on corrs
+    """
     # df = pd.read_csv(f'{sm_data_path()}/data/margin_rate/lend_assets.csv')
     # df['date'] = pd.to_datetime(df['dates'])
     # df['amount_usd'] = df['amount_usd'].str.replace(',','').astype(float)
@@ -26,3 +29,7 @@ if __name__ == "__main__":
         df1 = df[df.currency == coin]
         print(f"corr with btcusdt = {format(df1['amount_usd'].corr(df1['btcusdt']), '.2f')}")
         print(f"corr with token_usdt = {format(df1['amount_usd'].corr(df1['token_usd']), '.2f')}")
+
+
+if __name__ == "__main__":
+    pass
