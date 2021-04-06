@@ -150,6 +150,27 @@ def index_standardisation(index, level=100.0):
     return index * level / index[reference_date]
 
 
+def liquid_subset(mcap):
+    """
+    fix constituents on first day of qtr for the whole remaining qtr
+    pass wide form matrix to judge liquidity with dates on index
+    """
+    # in first half snapshot the mcap state as of first day of qtr and ffill to rest of qtr (and no more)
+    liquid = mcap[mcap.index.month.isin([1, 4, 7, 10])]
+    liquid = liquid[liquid.index.day.isin([1])]
+    liquid = liquid.resample('D', closed='right', label='right').sum().replace(0, np.nan)
+    # fill only to end of Current qtr and no more (stale after that)
+    liquid = liquid.resample(pd.offsets.QuarterEnd(startingMonth=3), closed='right', label='right').transform(
+        lambda x: x.ffill())
+
+    # in this second half actually compute the 1 and nan frame with constituent weights
+    liquid = liquid.rank(axis=1, ascending=False)  # we wanna have 1 or nan frame; 1 if in top 10
+    liquid = liquid.mask(liquid > 10)  # so starts counting at 1...1 means highest mcap
+    liquid = liquid / liquid  # now 1 or nan
+
+    return liquid
+
+
 def annualized_returns(s, name=None):
     """
     given a series of index values. computes annualized returns.
@@ -214,18 +235,25 @@ if __name__ == "__main__":
     index_mcap_capped = index_standardisation(index_mcap_capped)
 
     # restrict number of coins to 10
-    liquid = mcap.rank(axis=1, ascending=False)  # we wanna have 1 or nan frame; 1 if in top 10
-    liquid = liquid.mask(liquid > 10)  # so starts counting at 1...1 means highest mcap
-    liquid = liquid / liquid  # now 1 or nan
+    liquid = liquid_subset(mcap)
     wt_10 = normalize(mcap * liquid)
     index_10 = (close * wt_10).sum(axis=1)  # summed over cols so 1 val for each date
     index_10 = index_standardisation(index_10)
 
+    # restrict to 10 coins and put max wt = 0.4
+    liquid = liquid_subset(mcap)
+    wt_10_capped = normalize(mcap * liquid, ub=0.4)
+    index_10_capped = (close * wt_10_capped).sum(axis=1)  # summed over cols so 1 val for each date
+    index_10_capped = index_standardisation(index_10_capped)
+
+    liquid = liquid[liquid.index <= datetime(2021, 2, 10)]
     print(f'All unique coins in history in index of max 10 a day - {sorted(unstack(liquid).target.unique())}')
     print(len(unstack(liquid).target.unique()))
     print(
         f'All unique coins on latest date in index of max 10 a day - {sorted(unstack(liquid.tail(2)).target.unique())}')
     print(len(unstack(liquid.tail(2)).target.unique()))
+    # # number of coins per day
+    # print(liquid.unstack().dropna().reset_index().rename(columns={'level_1':'date'}).groupby(['date'])['target'].nunique().describe())
 
     # nifty index
     nifty = index_standardisation(nifty)
@@ -244,14 +272,16 @@ if __name__ == "__main__":
     # fx.to_csv(f'{sm_data_path()}/data/potential_constituents.csv')
     # exit()
 
-    # plot(index_btc_only)git config --global http.postBuffer 157286400
+    # plot(index_btc_only)#git config --global http.postBuffer 157286400
     # plot(index_mcap)
-    # # plot(index_mcap_capped)
+    # plot(index_mcap_capped)
     # plot(index_10)
+    # plot(index_10_capped)
     # plot(nifty)
 
     def f(s):
         s = s[s.index <= datetime(2021, 2, 14)]
+        s = s[s.index >= reference_date]
         a = s.pct_change()
         print(np.sqrt(252) * a.mean() / a.std())  # sharpe
         return s
@@ -259,6 +289,7 @@ if __name__ == "__main__":
 
     index_btc_only = f(index_btc_only)
     index_10 = f(index_10)
+    index_10_capped = f(index_10_capped)
     nifty = f(nifty)
     # downside of asfreq is it won't add till latest date if latest date is weekend. It only fills BETWEEN first and
     # last date in data
@@ -267,6 +298,7 @@ if __name__ == "__main__":
     # write the index history
     write_pq(index_btc_only, f'data/index_btc_only.pq')
     write_pq(index_10, f'data/index_10.pq')
+    write_pq(index_10_capped, f'data/index_10_capped.pq')
     write_pq(nifty, f'data/nifty.pq')
     write_pq(nifty_with_wknd, f'data/nifty_with_wknd.pq')
 
@@ -274,14 +306,18 @@ if __name__ == "__main__":
 
     # exit()
 
-    # plt.plot(index_btc_only, 'r')
-    # plt.plot(index_10, 'g')
-    # plt.plot(nifty, 'b')
-    # legend = plt.legend(labels=('btc only', 'mcap wtd 10 coins only', 'nifty'))
-    # plt.show()
-    # plt.clf()
-    # exit()
+    plt.plot(index_btc_only, 'r')
+    plt.plot(index_10, 'g')
+    plt.plot(index_10_capped, 'm')
+    plt.plot(nifty, 'b')
+    legend = plt.legend(
+        labels=('btc only', 'mcap wtd 10 coins only', 'mcap wtd 10 coins only with max wt = 0.4', 'nifty'))
+    plt.show()
+    plt.clf()
+    exit()
 
+    # 1/5/10% simulation
+    exit()
     annualized_returns(index_10, f'index_10')
     annualized_returns(nifty_with_wknd, f'nifty_with_wknd')
     annualized_returns(nifty, f'nifty')

@@ -6,7 +6,7 @@ from datetime import datetime
 import pandas as pd
 from joblib import Parallel, delayed
 
-reference_date = datetime(2018, 7, 10)  # index value considered 100 as reference on this date # a Tuesday
+reference_date = datetime(2018, 10, 1)  # index value considered 100 as reference on this qtr start date # a Monday
 
 
 def sm_data_path():
@@ -73,6 +73,7 @@ def pmap(fct, jobs, num_procs=-1, require=None):
     """
     return Parallel(n_jobs=num_procs, require=require)(
         delayed(fct)(job) for job in jobs)
+
 
 def unstack(s):
     """
