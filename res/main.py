@@ -1,5 +1,5 @@
 import pandas as pd
-from utils.smitra import sm_data_path, plot, normalize, create_pivot, reference_date, unstack
+from utils.smitra import sm_data_path, plot, normalize, create_pivot_index, reference_date, unstack
 import numpy as np
 from utils.data import lvals, read_pq, write_pq, exists
 from datetime import datetime
@@ -31,7 +31,7 @@ def clean_mcap_data():
     # write to parquet before returning
     write_pq(mcap, f'data/cleaned_mcap.pq')
     # write mcap as wide form (in USDT)
-    write_pq(create_pivot(mcap[['date', 'target', 'mcap']]), f'data/mcap.pq')
+    write_pq(create_pivot_index(mcap[['date', 'target', 'mcap']]), f'data/mcap.pq')
 
 
 def clean_candle_data():
@@ -103,9 +103,9 @@ def clean_candle_data():
     # write to parquet before returning
     write_pq(candle, f'data/cleaned_candle.pq')
     # write close_usdt
-    write_pq(create_pivot(candle[['date', 'target', 'close_usdt']]), f'data/close_usdt.pq')
+    write_pq(create_pivot_index(candle[['date', 'target', 'close_usdt']]), f'data/close_usdt.pq')
     # write volume_usdt
-    write_pq(create_pivot(candle[['date', 'target', 'volume_usdt']]), f'data/volume_usdt.pq')
+    write_pq(create_pivot_index(candle[['date', 'target', 'volume_usdt']]), f'data/volume_usdt.pq')
 
 
 def join_candle_and_mcap(candle, mcap):
@@ -252,6 +252,8 @@ if __name__ == "__main__":
     print(
         f'All unique coins on latest date in index of max 10 a day - {sorted(unstack(liquid.tail(2)).target.unique())}')
     print(len(unstack(liquid.tail(2)).target.unique()))
+    print(wt_10[wt_10.index == datetime(2021, 1, 1)].unstack().dropna())
+    print(wt_10_capped[wt_10_capped.index == datetime(2021, 1, 1)].unstack().dropna())
     # # number of coins per day
     # print(liquid.unstack().dropna().reset_index().rename(columns={'level_1':'date'}).groupby(['date'])['target'].nunique().describe())
 

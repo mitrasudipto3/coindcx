@@ -58,6 +58,17 @@ def create_pivot(df, col1='date', col2='target'):
     cols.remove(col1)
     cols.remove(col2)
     df = df.pivot(index=col1, columns=col2, values=cols[0])
+    return df.sort_index()
+
+
+def create_pivot_index(df, col1='date', col2='target'):
+    """
+    df must have 3 cols exactly
+    """
+    cols = list(df.columns)
+    cols.remove(col1)
+    cols.remove(col2)
+    df = df.pivot(index=col1, columns=col2, values=cols[0])
     # drop coins with all nan
     df = df.dropna(axis=1, how='all')
     # keep only after reference date
