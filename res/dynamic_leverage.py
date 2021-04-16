@@ -47,6 +47,10 @@ def min_max_scale_cs(df):
     return df * 100
 
 """
+Doc about this code and model is 
+https://docs.google.com/document/d/1u_ABpyzTrRe2C-f3uorF4hK2u4-IQQlxBeFKraPUAEg/edit?usp=sharing
+Owned by Sudipto. Anybody with link can view. 
+
 data queried on superset https://bi.coindcx.com/superset/sqllab
 Query for metadata (leverage) on each pair
 select * from quant_team.currency_pairs
@@ -58,14 +62,15 @@ and open_time >1617667200
 
 Note: internal_candle_sticks returns INR pair candles. But huobi and hitbtc return no data. Ignoring all 3. So 
 keeping just binance. Hence even in metadata ensure you keep binance only (ecode=B)
-We need upto 90 day, day candle volume info and 60 hr, hr candle volatility
+We need upto 30+ day, hour candle volume info in USD from db quant_team.binance_candle_sticks_conv
+and 60+ hr, hr candle for volatility from quant_team.binance_candle_sticks
 
 Datetime to unix timestamp converter
 https://www.epochconverter.com/
 """
 
 
-def load_data():
+def dynamic_leverage():
     # label of a candle shall be its close time (ie right side)
     df1 = pd.read_csv(f'{sm_data_path()}/data/candles_hour_binance_volatility.csv',
                       parse_dates=['close_time', 'open_time'])
@@ -165,10 +170,4 @@ array([[10.,  2.],
 """
 
 if __name__ == "__main__":
-    load_data()
-    """
-    Deliverables:
-    1. make drawdown lesser in index without including stablecoin (KPS)
-    2. new coins we can provide leverage >1 on.
-    3. new model (and working code) of leverage calculation. One which also allows for fractional leverages.
-    """
+    dynamic_leverage()
