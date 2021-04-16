@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from sklearn.cluster import KMeans
 from collections import defaultdict
 from scipy import stats
+import matplotlib.pyplot as plt
 
 pd.set_option('display.max_rows', 100)
 pd.set_option('display.max_columns', 200)
@@ -45,44 +46,6 @@ def min_max_scale_cs(df):
     df = df.sub(df.min(axis=1), axis=0).div(df.max(axis=1) - df.min(axis=1), axis=0)
     return df * 100
 
-
-def get_score_tags(s):
-    # cutoffs given in
-    # https://coindcx.atlassian.net/wiki/spaces/GB/pages/700449272/Bucketing+of+Markets+for+Dynamic+Leverage
-    def volume_cutoff(x):
-        if x <= 0.02:
-            return 'u'
-        elif x <= 0.15:
-            return 'l'
-        elif x <= 1.07:
-            return 'm'
-        else:
-            return 'h'
-
-    def volatility_cutoff(x):
-        if x <= 0.19:
-            return 'u'
-        elif x <= 1.07:
-            return 'l'
-        elif x <= 2.89:
-            return 'm'
-        else:
-            return 'h'
-
-    s['volume_tag'] = s.volume.apply(lambda x: volume_cutoff(x))
-    s['volatility_tag'] = s.volatility.apply(lambda x: volatility_cutoff(x))
-    s['tag'] = s['volume_tag'] + s['volatility_tag']
-    # be default leverage 1
-    mydict = defaultdict(lambda: 1)
-    # those tags that map to other than 1
-    for key in ['lu', 'll', 'mh']:
-        mydict[key] = 2
-
-    # print(s)
-    # exit()
-    return s
-
-
 """
 data queried on superset https://bi.coindcx.com/superset/sqllab
 Query for metadata (leverage) on each pair
@@ -120,7 +83,6 @@ def load_data():
     df2 = df2.sort_values(by=['close_time'])
     # dt will be rounded to an hour so no 23:59:59
     df2.close_time = df2.close_time.apply(lambda x: hour_rounder(epoch_to_dt(x)))
-    print(df2[df2.symbol == 'AAVEUSDT'])
     df2 = df2[['symbol', 'close_time', 'volume']].drop_duplicates(['symbol', 'close_time']).reset_index(drop=True)
     df2 = create_pivot(df2[['symbol', 'close_time', 'volume']], col1='close_time', col2='symbol')
     # lot of hourly volume data gaps on each symbol so use last hrly sample volume there else daily sum will
@@ -169,19 +131,24 @@ def load_data():
     df['label'] = kmeans.labels_
     df['new_leverage'] = df.groupby(['label'])['binance_leverage'].transform(
         lambda x: round_off((np.max(x) + np.min(x) + np.median(x) + np.mean(x)) / 4))
-    # index has label and the two columns give coordinates of centroids
-    s = pd.DataFrame(kmeans.cluster_centers_, columns=['volume', 'volatility', 'binance_leverage'])
-    # get ultra low, low, medium and high tags (cutoffs centrally defined in static manner)
-    # s = get_score_tags(s)
     print(df)
     print(df[['label', 'new_leverage']].drop_duplicates().sort_values(by=['label']))
-    print(df.max_leverage.value_counts())
-    print(df.binance_leverage.value_counts())
-    print(df.new_leverage.value_counts())
+    print(df.max_leverage.value_counts().sort_index())
+    s_dcx = df.max_leverage.value_counts().sort_index()
+    print(df.binance_leverage.value_counts().sort_index())
+    s_binance = df.binance_leverage.value_counts().sort_index()
+    print(df.new_leverage.value_counts().sort_index())
+    s_new = df.new_leverage.value_counts().sort_index()
+    dfs = pd.merge(s_dcx, s_binance, how='outer', left_index=True, right_index=True)
+    dfs = pd.merge(dfs, s_new, how='outer', left_index=True, right_index=True)
+    dfs = dfs.reset_index().rename(columns={'index': 'leverage', 'max_leverage': 'current_dcx_max_leverage'})
+    print(dfs)
+    ax = dfs.plot(kind='bar', x='leverage', subplots=True)
+    plt.show()
     print(df.label.value_counts())
     print(kmeans.cluster_centers_)
     print(df[df.max_leverage > 1].symbol.nunique())
-    # print(s)
+    print(df[df.new_leverage > 1].symbol.nunique())
 
 
 """
