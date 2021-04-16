@@ -154,6 +154,8 @@ def dynamic_leverage():
     print(kmeans.cluster_centers_)
     print(df[df.max_leverage > 1].symbol.nunique())
     print(df[df.new_leverage > 1].symbol.nunique())
+    # now a full frame with pair symbol and new leverage
+    print(df)
 
 
 """
