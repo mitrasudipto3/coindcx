@@ -24,6 +24,8 @@ def round_off(number):
     3.0
     round_off(4.1)
     4.0"""
+    if pd.isna(number):
+        return 1
     return round(number * 2) / 2
 
 
@@ -60,6 +62,15 @@ select * from quant_team.binance_candle_sticks
 where duration ='1h'
 and open_time >1617667200
 
+Query for cmc liquidity score (data updated hourly) - we need only latest so check if data overshoots 10 lac row limit
+select * from market_data.cmc_liquidity_score
+
+Query for dcx volume on binance tickers
+SELECT created_hour::date created_date,market,sum(volume_usdt) from quant_team.binance_dcx_hourly_volume 
+where created_hour >current_date - 45
+group by created_date,market 
+order by created_date,market
+
 Note: internal_candle_sticks returns INR pair candles. But huobi and hitbtc return no data. Ignoring all 3. So 
 keeping just binance. Hence even in metadata ensure you keep binance only (ecode=B)
 We need upto 30+ day, hour candle volume info in USD from db quant_team.binance_candle_sticks_conv
@@ -77,6 +88,8 @@ def dynamic_leverage():
     df1[['close']] = df1[['close']].astype(float)
     df1 = df1.sort_values(by=['close_time'])
     df1.close_time = df1.close_time.apply(lambda x: hour_rounder(epoch_to_dt(x)))
+    # remove UTC to no tz. It is in UTC though. This is imp as later DCX volume will be in no tz
+    df1.close_time = df1.close_time.dt.tz_convert(None)
     df1 = create_pivot(df1[['symbol', 'close_time', 'close']], col1='close_time', col2='symbol')
     df1 = df1.pct_change()  # returns from close
     df1 = df1.rolling(window=60, min_periods=2).std()  # 60 hr volatility (to replace 60 min and stands for 2.5 days)
@@ -88,6 +101,8 @@ def dynamic_leverage():
     df2 = df2.sort_values(by=['close_time'])
     # dt will be rounded to an hour so no 23:59:59
     df2.close_time = df2.close_time.apply(lambda x: hour_rounder(epoch_to_dt(x)))
+    # remove UTC to no tz. It is in UTC though. This is imp as later DCX volume will be in no tz
+    df2.close_time = df2.close_time.dt.tz_convert(None)
     df2 = df2[['symbol', 'close_time', 'volume']].drop_duplicates(['symbol', 'close_time']).reset_index(drop=True)
     df2 = create_pivot(df2[['symbol', 'close_time', 'volume']], col1='close_time', col2='symbol')
     # lot of hourly volume data gaps on each symbol so use last hrly sample volume there else daily sum will
@@ -96,6 +111,7 @@ def dynamic_leverage():
     df2 = df2.resample('D', closed='right', label='right').sum()
     # volume = 0.5*adv7+0.5*adv30
     df2 = 0.5 * df2.rolling(window=7, min_periods=2).mean() + 0.5 * df2.rolling(window=30, min_periods=2).mean()
+    adv = df2.copy()  # will be used to scale dcx_volume later on so save it
     df2 = min_max_scale_cs(df2)  # normalize is min max scaling cross sectionally
     df2 = df2.unstack().reset_index(name='volume')
     # inner join on close_time, symbol so only points where day AND hour candlestick meet are left
@@ -129,21 +145,55 @@ def dynamic_leverage():
     # keep all symbols that were there in merged candle data
     df = pd.merge(df, dfb, how='left', on='symbol')
     df = df.drop_duplicates(subset=['symbol', 'close_time'])
-    df['binance_leverage'] = df['binance_leverage'].fillna(1)
+    df['binance_leverage'] = df['binance_leverage'].fillna(1)  # let nan stay nan
+
+    # add cmc liquidity
+    dfc = pd.read_csv(f'{sm_data_path()}/data/cmc_liquidity.csv')
+    dfc['close_time'] = pd.to_datetime(dfc['quote_usd_last_updated']).apply(lambda x: hour_rounder(x))
+    dfc['symbol'] = dfc['market_pair'].apply(lambda x: x.replace(' ', ''))
+    # keep latest row for each pair
+    dfc = dfc.sort_values(by=['close_time', 'symbol']).drop_duplicates(subset=['symbol'], keep='last')
+    dfc['cmc_liquidity'] = pd.to_numeric(dfc['quote_usd_effective_liquidity'])
+    df = pd.merge(df, dfc[['symbol', 'cmc_liquidity']], how='inner',
+                  on='symbol')  # 7 symbols drop among 613 ; very less
+
+    # add dcx volume
+    dfd = pd.read_csv(f'{sm_data_path()}/data/dcx_volume.csv').rename(columns={'market': 'symbol', 'sum': 'dcx_volume'})
+    dfd['close_time'] = pd.to_datetime(dfd['created_date'])
+    dfd['dcx_volume'] = pd.to_numeric(dfd['dcx_volume'])
+    dfd = create_pivot(dfd[['close_time', 'symbol', 'dcx_volume']], 'close_time', 'symbol')
+    # volume = 0.5*adv7+0.5*adv30
+    dfd = 0.5 * dfd.rolling(window=7, min_periods=2).mean() + 0.5 * dfd.rolling(window=30, min_periods=2).mean()
+    dfd = dfd / adv  # dcx volume / binance volume
+    dfd = dfd.unstack().reset_index(name='dcx_volume')
+    # if no dcx vol data then we will later fill it with nan
+    df = pd.merge(df, dfd, on=['symbol', 'close_time'], how='left')
+    df['ratio_dcx_binance_volume'] = df['dcx_volume'] / df['volume']
+    # multiply the below factor (specific to pair) to new leverage (common for cluster) to get final new leverage
+    # factor is always between 1x and 2x. If dcx volume is 1% of binance then it is 1x
+    df['factor'] = 0.01 * 1.5 / df['ratio_dcx_binance_volume']
+    df['factor'] = df['factor'].fillna(1)  # nan data in dcx/binance volume must lead to 1 factor multiplier
+    df['factor'] = np.maximum(1, df['factor'])  # new leverage to be >= 1x that of binance
+    df['factor'] = np.minimum(2, df['factor'])  # new leverage to be <= 3x that of binance
 
     # clustering
-    kmeans = KMeans(n_clusters=25).fit(df[['volume', 'volatility', 'binance_leverage']])
+    kmeans = KMeans(n_clusters=25).fit(df[['volume', 'volatility', 'cmc_liquidity']])
     df['label'] = kmeans.labels_
+    # get common new leverage for each cluster
     df['new_leverage'] = df.groupby(['label'])['binance_leverage'].transform(
-        lambda x: round_off((np.max(x) + np.min(x) + np.median(x) + np.mean(x)) / 4))
+        lambda x: (np.nanmax(x) + np.nanmin(x) + np.nanmedian(x) + np.nanmean(x)) / 4)
+    # now multiply cluster's leverage by pair specific factor dependent on dcx/binance volume ratio
+    # it is chosen such that factor is between 1x and 2x. If dcx volume is 1% of binance then it is 1.5x
+    # round off final leverage to nearest 0.5
+    df['final_new_leverage'] = (df['new_leverage'] * df['factor']).apply(lambda x: round_off(x))
     print(df)
-    print(df[['label', 'new_leverage']].drop_duplicates().sort_values(by=['label']))
+    print(df[['label', 'final_new_leverage']].drop_duplicates().sort_values(by=['label']))
     print(df.max_leverage.value_counts().sort_index())
     s_dcx = df.max_leverage.value_counts().sort_index()
     print(df.binance_leverage.value_counts().sort_index())
     s_binance = df.binance_leverage.value_counts().sort_index()
-    print(df.new_leverage.value_counts().sort_index())
-    s_new = df.new_leverage.value_counts().sort_index()
+    print(df.final_new_leverage.value_counts().sort_index())
+    s_new = df.final_new_leverage.value_counts().sort_index()
     dfs = pd.merge(s_dcx, s_binance, how='outer', left_index=True, right_index=True)
     dfs = pd.merge(dfs, s_new, how='outer', left_index=True, right_index=True)
     dfs = dfs.reset_index().rename(columns={'index': 'leverage', 'max_leverage': 'current_dcx_max_leverage'})
@@ -153,9 +203,9 @@ def dynamic_leverage():
     print(df.label.value_counts())
     print(kmeans.cluster_centers_)
     print(df[df.max_leverage > 1].symbol.nunique())
-    print(df[df.new_leverage > 1].symbol.nunique())
+    print(df[df.final_new_leverage > 1].symbol.nunique())
     # now a full frame with pair symbol and new leverage
-    print(df)
+    print(df.fillna(None))
 
 
 """
