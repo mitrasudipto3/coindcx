@@ -204,9 +204,9 @@ def dynamic_leverage():
     print(kmeans.cluster_centers_)
     print(df[df.max_leverage > 1].symbol.nunique())
     print(df[df.final_new_leverage > 1].symbol.nunique())
-    # now a full frame with pair symbol and new leverage
-    print(df.fillna(None))
-
+    # now a full frame with pair symbol and final new leverage
+    print(df)
+    df.to_csv(f'{sm_data_path()}/data/output_final_new_leverage.csv', index=False)
 
 """
 X = np.array([[1, 2], [1, 4], [1, 0],
