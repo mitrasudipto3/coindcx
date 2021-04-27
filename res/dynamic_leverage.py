@@ -26,7 +26,11 @@ def round_off(number):
     4.0"""
     if pd.isna(number):
         return 1
-    return round(number * 2) / 2
+    number = round(number * 2) / 2
+    # keep fractional values only for those under 5 ; above it only allow integers
+    if number > 5:
+        number = round(number)
+    return number
 
 
 def epoch_to_dt(epoch):
@@ -63,7 +67,10 @@ where duration ='1h'
 and open_time >1617667200
 
 Query for cmc liquidity score (data updated hourly) - we need only latest so check if data overshoots 10 lac row limit
-select * from market_data.cmc_liquidity_score
+SELECT quote_usd_last_updated::date created_date,market_pair,avg(quote_usd_effective_liquidity) quote_usd_effective_liquidity from market_data.cmc_liquidity_score
+where quote_usd_last_updated >current_date - 10
+group by created_date,market_pair 
+order by created_date,market_pair
 
 Query for dcx volume on binance tickers
 SELECT created_hour::date created_date,market,sum(volume_usdt) from quant_team.binance_dcx_hourly_volume 
@@ -149,8 +156,12 @@ def dynamic_leverage():
 
     # add cmc liquidity
     dfc = pd.read_csv(f'{sm_data_path()}/data/cmc_liquidity.csv')
-    dfc['close_time'] = pd.to_datetime(dfc['quote_usd_last_updated']).apply(lambda x: hour_rounder(x))
+    dfc['close_time'] = pd.to_datetime(dfc['created_date'])
     dfc['symbol'] = dfc['market_pair'].apply(lambda x: x.replace(' ', ''))
+    # smoothen out the cmc liquidity over 7 daily samples (nan safe operation)
+    dfc = dfc.sort_values(by=['symbol', 'close_time']).set_index('close_time')
+    dfc = dfc.groupby(['symbol']).rolling(window=7, min_periods=1)['quote_usd_effective_liquidity'].mean()
+    dfc = dfc.reset_index()
     # keep latest row for each pair
     dfc = dfc.sort_values(by=['close_time', 'symbol']).drop_duplicates(subset=['symbol'], keep='last')
     dfc['cmc_liquidity'] = pd.to_numeric(dfc['quote_usd_effective_liquidity'])
@@ -181,7 +192,7 @@ def dynamic_leverage():
     df['label'] = kmeans.labels_
     # get common new leverage for each cluster
     df['new_leverage'] = df.groupby(['label'])['binance_leverage'].transform(
-        lambda x: (np.nanmax(x) + np.nanmin(x) + np.nanmedian(x) + np.nanmean(x)) / 4)
+        lambda x: np.nanmean(x))
     # now multiply cluster's leverage by pair specific factor dependent on dcx/binance volume ratio
     # it is chosen such that factor is between 1x and 2x. If dcx volume is 1% of binance then it is 1.5x
     # round off final leverage to nearest 0.5
