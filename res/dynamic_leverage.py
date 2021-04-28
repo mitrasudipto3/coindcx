@@ -52,6 +52,7 @@ def min_max_scale_cs(df):
     df = df.sub(df.min(axis=1), axis=0).div(df.max(axis=1) - df.min(axis=1), axis=0)
     return df * 100
 
+
 """
 Doc about this code and model is 
 https://docs.google.com/document/d/1u_ABpyzTrRe2C-f3uorF4hK2u4-IQQlxBeFKraPUAEg/edit?usp=sharing
@@ -193,6 +194,10 @@ def dynamic_leverage():
     # get common new leverage for each cluster
     df['new_leverage'] = df.groupby(['label'])['binance_leverage'].transform(
         lambda x: np.nanmean(x))
+    # based on new_leverage we force factor to 1 or keep as it is. Idea is to allow for >1 factor only on liquid
+    # pairs (which give most business) and force factor = 1 for rest illiquid ones that add most risk for us.
+    df['new_leverage_rank'] = df['new_leverage'].rank(pct=True)  # percentile rank
+    df['factor'] = np.where(df['new_leverage_rank'] >= 0.9, df['factor'], 1)
     # now multiply cluster's leverage by pair specific factor dependent on dcx/binance volume ratio
     # it is chosen such that factor is between 1x and 2x. If dcx volume is 1% of binance then it is 1.5x
     # round off final leverage to nearest 0.5
@@ -218,6 +223,7 @@ def dynamic_leverage():
     # now a full frame with pair symbol and final new leverage
     print(df)
     df.to_csv(f'{sm_data_path()}/data/output_final_new_leverage.csv', index=False)
+
 
 """
 X = np.array([[1, 2], [1, 4], [1, 0],
